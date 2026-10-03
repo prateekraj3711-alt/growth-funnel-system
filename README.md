@@ -320,25 +320,39 @@ building (see "Known limitations" for what that caught).
 
 ```text
 Local:   React (Vite dev) → local API → local/dockerized Postgres ← local worker
-Public:  React (Vercel)   → public API (Render/Railway/Fly.io) → hosted Postgres ← worker (same host as API)
+Public:  React (Vercel)   → public API+worker (Render) → hosted Postgres (Neon)
 ```
 
 Nothing in the code branches on environment — only `DATABASE_URL`, `WEB_ORIGIN`,
 `VITE_API_URL`, and the Meta/Airtable credentials change between local and deployed.
 
-1. **Database** — provision a managed Postgres (Neon/Supabase/Railway/Render all
-   work). Set `DATABASE_URL` in the API's and worker's environment, then run
-   `npm run prisma:deploy` once against it. Never copy local data into it.
-2. **API** — deploy `apps/api` (`npm run build --workspace apps/api` then
-   `node apps/api/dist/server.js`) to Render/Railway/Fly.io. Set `DATABASE_URL`,
-   `WEB_ORIGIN` (the deployed frontend's exact origin — never `*`), and Meta/Airtable
-   credentials as that provider's secrets.
-3. **Worker** — deploy `worker` as a **separate** service on the same provider,
-   pointed at the same `DATABASE_URL`. It must run independently of the API process.
-4. **Frontend** — deploy `apps/web` to Vercel. Set `VITE_API_URL` to the deployed
-   API's own domain.
-5. **CORS** — `WEB_ORIGIN` accepts a comma-separated list, so a production domain and
-   a Vercel preview domain can both be allowed without opening it up entirely.
+This repo deploys with: **Vercel** (frontend), **Render** (API + worker), **Neon**
+(Postgres). Any equivalent providers work identically — only connection
+strings/origins change.
+
+1. **Database (Neon)** — `prisma migrate deploy` is run once against the hosted
+   connection string to initialize the schema from migrations only; local data is
+   never copied over.
+2. **API + worker (Render)** — driven by the committed `render.yaml` Blueprint.
+   **Render's free plan covers Web Services but not Background Workers**
+   ([render.com/docs/free](https://render.com/docs/free)), so for the free public
+   demo both run as two independent modules inside **one** free Web Service via
+   `deploy/render-combined-start.mjs` — it does nothing but `import` the API's and
+   the worker's existing, unmodified entrypoints into one Node process. This is a
+   deployment-only, cost-driven trade-off: `apps/api` and `worker` remain fully
+   separate packages with their own Prisma clients and shutdown handling, local dev
+   still runs them as genuinely separate processes (`npm run dev:api` /
+   `npm run dev:worker`), and a paid deployment can split this back into Render's
+   real `web` + `worker` service types with zero code changes — just two
+   `render.yaml` entries pointing at `apps/api/dist/server.js` and
+   `worker/dist/worker.js` respectively.
+3. **Frontend (Vercel)** — deployed from the repo root with `rootDirectory:
+   apps/web` (set on the Vercel project) so npm workspace siblings resolve
+   correctly during install. `VITE_API_URL` points at the deployed Render service's
+   own domain.
+4. **CORS** — `WEB_ORIGIN` (set on the Render service) accepts a comma-separated
+   list, so a production domain and a Vercel preview domain can both be allowed
+   without opening it up entirely.
 
 ## Known limitations
 

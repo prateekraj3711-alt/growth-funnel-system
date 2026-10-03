@@ -72,6 +72,12 @@ URLs, or Meta event names/payloads.
   scheduling beyond simple backoff.
 - No admin authentication — fine for a local/demo deployment; would need it before
   fronting a real production system.
+- **The free public demo runs the API and worker as one Render Web Service**, not
+  two — Render's free plan doesn't cover Background Workers at all (verified
+  against their docs, not assumed). `deploy/render-combined-start.mjs` just imports
+  both existing, unmodified entrypoints into one process; the packages remain fully
+  separate, and local dev still runs them independently. A paid deployment reverts
+  this with a two-line `render.yaml` change, no code change.
 - Attribution/idempotency state lives in `sessionStorage`, not `localStorage` — a
   closed tab means a genuinely fresh attempt rather than resuming a stale one,
   trading a small amount of resilience for stronger data-minimization (no
