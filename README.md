@@ -9,6 +9,16 @@ Built as a take-home exercise. The brief: demonstrate conversion UX, attribution
 integrity, Meta event quality/deduplication, and a lead pipeline that cannot lose a
 lead because a downstream integration is down.
 
+**Live:**
+- Funnel: https://growth-funnel-system-web.vercel.app
+- API health: https://growth-funnel-system.onrender.com/api/health
+- Admin diagnostics: https://growth-funnel-system.onrender.com/admin/health
+
+Running in mock mode (`META_ENABLED=false`, `AIRTABLE_ENABLED=false`) — see
+"Local setup" for why that's a deliberate, fully-functional demo state, not a
+limitation. Render's free instance spins down after inactivity, so the first
+request after a while may take ~30s to wake it up.
+
 ## Overview
 
 ```text

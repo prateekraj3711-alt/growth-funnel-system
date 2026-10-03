@@ -1,5 +1,9 @@
 # Submission Notes
 
+**Live funnel:** https://growth-funnel-system-web.vercel.app
+**GitHub:** https://github.com/prateekraj3711-alt/growth-funnel-system
+**API health:** https://growth-funnel-system.onrender.com/api/health
+
 ## Assumptions
 
 - US/Canada phone numbers (`+1` default normalization) — the reference funnel and
