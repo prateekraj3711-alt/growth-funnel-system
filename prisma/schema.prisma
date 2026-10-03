@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE ON TIMESTAMPS: every DateTime field below is explicitly
+// @db.Timestamptz(3), never the Postgres default `timestamp without time
+// zone`. The worker's atomic job-claim query (worker/src/queue/claim.ts)
+// compares Prisma-written columns against raw SQL `now()` in the same
+// WHERE clause. `now()` returns a timezone-AWARE value; a naive
+// `timestamp` column silently reinterprets it in the session's timezone
+// instead of comparing absolute instants. On a server whose Postgres
+// session timezone isn't UTC, that mismatch makes `available_at <= now()`
+// evaluate incorrectly and silently defeats retry backoff — confirmed by
+// hitting exactly this bug during local testing before adding
+// @db.Timestamptz. See SUBMISSION.md "Known Limitations".
+
+/// A captured lead. PostgreSQL is the system of record — this row must exist
+/// before any downstream integration (Meta, Airtable) is ever attempted.
+model Lead {
+  id     String @id @default(cuid())
+  leadId String @unique @map("lead_id")
+
+  firstName String @map("first_name")
+  lastName  String @map("last_name")
+  email     String
+  phone     String
+
+  // NOTE: the reference spec's qualification step only ever asks a yes/no
+  // "are you 40+" question, never a precise age — so we store the boolean
+  // actually collected rather than fabricate a numeric age. See
+  // SUBMISSION.md "Key Decisions".
+  ageOver40           Boolean? @map("age_over_40")
+  receivesBenefits    Boolean? @map("receives_benefits")
+  employed            Boolean?
+  conditionLimitsWork Boolean? @map("condition_limits_work")
+
+  // First-touch attribution. Deliberately never overwritten after creation —
+  // see README.md "Attribution".
+  utmSource    String?   @map("utm_source")
+  utmMedium    String?   @map("utm_medium")
+  utmCampaign  String?   @map("utm_campaign")
+  utmContent   String?   @map("utm_content")
+  utmTerm      String?   @map("utm_term")
+  fbclid       String?
+  landingPage  String?   @map("landing_page")
+  referrer     String?
+  firstTouchAt DateTime? @map("first_touch_at") @db.Timestamptz(3)
+
+  // Meta matching identifiers (never hashed at rest — hashing happens at
+  // send-time, immediately before the CAPI request).
+  fbp String?
+  fbc String?
+
+  consentGiven         Boolean   @default(false) @map("consent_given")
+  consentTimestamp     DateTime? @map("consent_timestamp") @db.Timestamptz(3)
+  privacyPolicyVersion String?   @map("privacy_policy_version")
+
+  requestId String? @map("request_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  events          Event[]
+  jobs            Job[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("leads")
+}
+
+/// A conversion-relevant event tied to a lead (currently: the canonical
+/// "Lead" event sent to Meta). event_id is the stable identifier shared by
+/// the browser Pixel call and the server CAPI call for the same conversion.
+model Event {
+  id      String @id @default(cuid())
+  eventId String @unique @map("event_id")
+
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [leadId])
+
+  eventName   String @map("event_name")
+  eventStatus String @default("pending") @map("event_status")
+
+  /// Non-PII summary only — never raw email/phone. See SUBMISSION.md
+  /// "Privacy / Data Handling".
+  payload Json
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt    DateTime? @map("sent_at") @db.Timestamptz(3)
+  lastError String?   @map("last_error")
+
+  @@index([leadId])
+  @@map("events")
+}
+
+enum JobStatus {
+  pending
+  processing
+  completed
+  failed
+  dead_letter
+}
+
+enum JobType {
+  META_LEAD_EVENT
+  AIRTABLE_LEAD_SYNC
+}
+
+/// A unit of asynchronous work. Claimed atomically by the worker via
+/// `SELECT ... FOR UPDATE SKIP LOCKED` (see worker/src/queue/claim.ts).
+model Job {
+  id    String @id @default(cuid())
+  jobId String @unique @map("job_id")
+
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [leadId])
+
+  jobType JobType   @map("job_type")
+  status  JobStatus @default(pending)
+
+  payload Json
+
+  attempts    Int @default(0)
+  maxAttempts Int @default(5) @map("max_attempts")
+
+  availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(3)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(3)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
+  failedAt       DateTime? @map("failed_at") @db.Timestamptz(3)
+  lastError      String?   @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, availableAt])
+  @@index([leadId])
+  @@map("jobs")
+}
+
+/// Singleton row (id is always 1) the worker touches on every poll cycle.
+/// Lets the API's health/admin endpoints report real worker liveness
+/// without the two processes needing a direct channel to each other.
+model WorkerHeartbeat {
+  id        Int      @id @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("worker_heartbeat")
+}
+
+/// Guards POST /api/leads against double-clicks, browser retries and network
+/// retries. Keyed by the client-supplied Idempotency-Key header.
+model IdempotencyKey {
+  id  String @id @default(cuid())
+  key String @unique
+
+  leadId String? @map("lead_id")
+  lead   Lead?   @relation(fields: [leadId], references: [leadId])
+
+  /// SHA-256 of the normalized request body — lets us detect the (invalid)
+  /// case of the same key being reused for a genuinely different payload.
+  requestHash String @map("request_hash")
+
+  /// The exact response we returned the first time, replayed verbatim on
+  /// every subsequent request with this key.
+  responseBody Json @map("response_body")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(3)
+
+  @@map("idempotency_keys")
+}

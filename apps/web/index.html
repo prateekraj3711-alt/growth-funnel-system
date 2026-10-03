@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Benefits Eligibility Check | Free 60-Second Qualifier</title>
+    <meta
+      name="description"
+      content="Answer a few quick questions to find out if you qualify. Free and confidential."
+    />
+    <!-- Captures UTM/click-id params into sessionStorage before React mounts,
+         so first-touch attribution survives even if the bundle fails to
+         load. See src/lib/attribution.ts for the persisted-read side. -->
+    <script>
+      (function () {
+        try {
+          var KEY = "gf_attribution_v1";
+          if (sessionStorage.getItem(KEY)) return; // first touch already captured
+          var params = new URLSearchParams(location.search);
+          var pick = function (k) {
+            var v = params.get(k);
+            return v && v.trim() ? v.trim() : undefined;
+          };
+          var captured = {
+            utmSource: pick("utm_source"),
+            utmMedium: pick("utm_medium"),
+            utmCampaign: pick("utm_campaign"),
+            utmContent: pick("utm_content"),
+            utmTerm: pick("utm_term"),
+            fbclid: pick("fbclid"),
+            landingPage: location.href,
+            referrer: document.referrer || undefined,
+            firstTouchAt: new Date().toISOString(),
+          };
+          sessionStorage.setItem(KEY, JSON.stringify(captured));
+        } catch (e) {
+          /* sessionStorage unavailable (private mode) — non-fatal */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
