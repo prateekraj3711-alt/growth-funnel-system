@@ -8,6 +8,9 @@ const boolFromString = z
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
+  // Render (and most PaaS providers) inject PORT and expect the service to
+  // bind to it; API_PORT is the local-dev-friendly name. PORT wins when set.
+  PORT: z.coerce.number().int().positive().optional(),
   API_PORT: z.coerce.number().int().positive().default(4000),
   WEB_ORIGIN: z.string().min(1).default("http://localhost:5173"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),

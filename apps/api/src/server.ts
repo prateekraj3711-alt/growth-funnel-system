@@ -6,8 +6,9 @@ import { logger } from "./lib/logger.js";
 async function main(): Promise<void> {
   const app = await buildApp();
 
-  await app.listen({ port: env.API_PORT, host: "0.0.0.0" });
-  logger.info({ port: env.API_PORT }, "API listening");
+  const port = env.PORT ?? env.API_PORT;
+  await app.listen({ port, host: "0.0.0.0" });
+  logger.info({ port }, "API listening");
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {

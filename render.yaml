@@ -1,0 +1,96 @@
+services:
+  - type: web
+    name: growth-funnel-api
+    runtime: node
+    plan: free
+    buildCommand: >-
+      npm install &&
+      npm run build --workspace packages/shared &&
+      npm run build --workspace packages/validation &&
+      npx prisma generate --schema prisma/schema.prisma &&
+      npm run build --workspace apps/api
+    startCommand: >-
+      npx prisma migrate deploy --schema prisma/schema.prisma &&
+      node apps/api/dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: MAX_JOB_ATTEMPTS
+        value: "5"
+      - key: JOB_POLL_INTERVAL_MS
+        value: "1000"
+      - key: JOB_LEASE_TIMEOUT_MS
+        value: "60000"
+      - key: PRIVACY_POLICY_VERSION
+        value: "1.0.0"
+      - key: META_ENABLED
+        value: "false"
+      - key: META_PIXEL_ID
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_TEST_EVENT_CODE
+        sync: false
+      - key: META_SIMULATE_FAILURE
+        value: "false"
+      - key: AIRTABLE_ENABLED
+        value: "false"
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: AIRTABLE_BASE_ID
+        sync: false
+      - key: AIRTABLE_TABLE_ID
+        sync: false
+      - key: AIRTABLE_SIMULATE_FAILURE
+        value: "false"
+
+  - type: worker
+    name: growth-funnel-worker
+    runtime: node
+    plan: free
+    buildCommand: >-
+      npm install &&
+      npm run build --workspace packages/shared &&
+      npx prisma generate --schema prisma/schema.prisma &&
+      npm run build --workspace worker
+    startCommand: node worker/dist/worker.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false
+      - key: MAX_JOB_ATTEMPTS
+        value: "5"
+      - key: JOB_POLL_INTERVAL_MS
+        value: "1000"
+      - key: JOB_LEASE_TIMEOUT_MS
+        value: "60000"
+      - key: META_ENABLED
+        value: "false"
+      - key: META_PIXEL_ID
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_TEST_EVENT_CODE
+        sync: false
+      - key: META_SIMULATE_FAILURE
+        value: "false"
+      - key: AIRTABLE_ENABLED
+        value: "false"
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: AIRTABLE_BASE_ID
+        sync: false
+      - key: AIRTABLE_TABLE_ID
+        sync: false
+      - key: AIRTABLE_SIMULATE_FAILURE
+        value: "false"
