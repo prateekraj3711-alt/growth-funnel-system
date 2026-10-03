@@ -12,7 +12,7 @@ services:
     runtime: node
     plan: free
     buildCommand: >-
-      npm install &&
+      npm install --include=dev &&
       npm run build --workspace packages/shared &&
       npm run build --workspace packages/validation &&
       npx prisma generate --schema prisma/schema.prisma &&
