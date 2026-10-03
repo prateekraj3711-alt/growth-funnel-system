@@ -101,10 +101,15 @@ URLs, or Meta event names/payloads.
 
 ## Known Limitations
 
-See README.md "Known limitations" for the full list, including a genuinely
-interesting one: every `DateTime` column had to be made explicitly
-`@db.Timestamptz` after live testing revealed that Postgres's default
-timezone-naive `timestamp` columns, compared against raw-SQL `now()` on a
-non-UTC-configured session, silently defeated retry backoff entirely — a bug that
-typecheck, lint, and unit tests would never have caught, and that building and
-running the whole thing for real did.
+See README.md "Known limitations" for the full list. Two bugs surfaced only by
+actually using the deployed system, not by typecheck/lint/unit tests:
+
+1. Every `DateTime` column had to become explicitly `@db.Timestamptz` after live
+   testing revealed Postgres's default timezone-naive `timestamp` columns, compared
+   against raw-SQL `now()` on a non-UTC session, silently defeated retry backoff.
+2. The frontend originally persisted its idempotency ids to `sessionStorage` to
+   "survive a refresh." In real use this caused a *false* 409 conflict: resubmitting
+   in the same tab (even the identical lead) reuses the stale key against a new
+   `consentTimestamp`-bearing body. Fixed by scoping the ids to the component's
+   in-memory lifetime instead — a page refresh loses the funnel's answers anyway, so
+   persisting only the ids never protected anything real.

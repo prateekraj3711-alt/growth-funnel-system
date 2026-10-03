@@ -5,45 +5,32 @@ import { submitLead } from "../lib/api";
 import { trackLead, trackQualificationCompleted, trackQualificationStarted } from "../lib/metaPixel";
 import { funnelReducer, initialFunnelState } from "./state";
 
-const SUBMISSION_IDS_KEY = "gf_submission_ids_v1";
-
 interface SubmissionIds {
   eventId: string;
   idempotencyKey: string;
-}
-
-/**
- * One (eventId, idempotencyKey) pair per funnel attempt, created lazily and
- * persisted to sessionStorage. Reused across every retry of THIS attempt
- * (including a page refresh after a failed submit) so a resubmit can never
- * create a duplicate lead or a duplicate Meta conversion — see
- * README.md "Idempotency".
- */
-function getOrCreateSubmissionIds(): SubmissionIds {
-  try {
-    const existing = sessionStorage.getItem(SUBMISSION_IDS_KEY);
-    if (existing) return JSON.parse(existing) as SubmissionIds;
-  } catch {
-    // fall through
-  }
-
-  const ids: SubmissionIds = {
-    eventId: crypto.randomUUID(),
-    idempotencyKey: crypto.randomUUID(),
-  };
-  try {
-    sessionStorage.setItem(SUBMISSION_IDS_KEY, JSON.stringify(ids));
-  } catch {
-    // non-fatal — retries within this page view still share `ids` via the
-    // closure below, they just won't survive a reload
-  }
-  return ids;
 }
 
 export function useFunnel() {
   const [state, dispatch] = useReducer(funnelReducer, initialFunnelState);
   const hasStartedRef = useRef(false);
   const hasFiredCompletedRef = useRef(false);
+
+  // One (eventId, idempotencyKey) pair per funnel session, generated once and
+  // kept in memory for the lifetime of this component — NOT persisted to
+  // sessionStorage. That was tried and is actively harmful: consentTimestamp
+  // is regenerated on every submit, so a stale persisted key from an earlier
+  // (even successful) submission collides with a genuinely new attempt's
+  // different body and trips the "Idempotency-Key reused with a different
+  // body" 409 — observed live. A page refresh loses all the funnel's
+  // answers anyway, so persisting just the ids across reloads never actually
+  // protected anything; an in-memory ref correctly covers the real case
+  // (retrying the same failed submit without navigating away) while a fresh
+  // page load — which can only mean a fresh attempt — gets fresh ids. See
+  // README.md "Idempotency".
+  const submissionIdsRef = useRef<SubmissionIds | null>(null);
+  if (!submissionIdsRef.current) {
+    submissionIdsRef.current = { eventId: crypto.randomUUID(), idempotencyKey: crypto.randomUUID() };
+  }
 
   const answerStep = useCallback(
     (stepId: keyof QualificationData, value: boolean, disqualifies: boolean) => {
@@ -72,7 +59,7 @@ export function useFunnel() {
     async (contact: LeadContact, consent: ConsentData) => {
       dispatch({ type: "SUBMIT_START" });
 
-      const { eventId, idempotencyKey } = getOrCreateSubmissionIds();
+      const { eventId, idempotencyKey } = submissionIdsRef.current!;
       const firstTouch = getFirstTouchAttribution();
       const tracking = getCurrentTracking(firstTouch);
 

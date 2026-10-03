@@ -167,4 +167,46 @@ describe("App funnel", () => {
       );
     });
   });
+
+  // Regression test for a bug caught in live use: submission ids were
+  // persisted to sessionStorage, so a second funnel run in the same browser
+  // tab reused a stale idempotency key against a new (different
+  // consentTimestamp) body and got a false 409 conflict. Ids must be
+  // per-session (component lifetime) only.
+  it("uses a fresh idempotency key and eventId for each new funnel session, even with identical answers", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      json: async () => ({ success: true, leadId: "lead_x", status: "accepted", eventId: "evt_x" }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const user1 = userEvent.setup();
+    const { unmount } = render(<App />);
+    await answerAllQuestionsAsQualified(user1);
+    await fillContactForm(user1);
+    await user1.click(screen.getByRole("button", { name: /see my results/i }));
+    await screen.findByText("Thanks — your information has been received");
+    unmount();
+
+    // A second, independent funnel session (e.g. the same person submitting
+    // again, or a fresh page load) with the exact same answers and contact
+    // info — this must NOT reuse the first session's ids.
+    const user2 = userEvent.setup();
+    render(<App />);
+    await answerAllQuestionsAsQualified(user2);
+    await fillContactForm(user2);
+    await user2.click(screen.getByRole("button", { name: /see my results/i }));
+    await screen.findByText("Thanks — your information has been received");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = fetchSpy.mock.calls;
+    const firstKey = (firstCall?.[1]?.headers as Record<string, string>)["idempotency-key"];
+    const secondKey = (secondCall?.[1]?.headers as Record<string, string>)["idempotency-key"];
+    const firstBody = JSON.parse(firstCall?.[1]?.body as string);
+    const secondBody = JSON.parse(secondCall?.[1]?.body as string);
+
+    expect(firstKey).toBeDefined();
+    expect(secondKey).toBeDefined();
+    expect(secondKey).not.toBe(firstKey);
+    expect(secondBody.eventId).not.toBe(firstBody.eventId);
+  });
 });

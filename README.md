@@ -256,10 +256,16 @@ e.g. a double-tap) is resolved via the database's own unique constraint: whichev
 insert wins, the loser catches the constraint violation and replays the winner's
 result instead of erroring.
 
-The frontend generates `event_id` and `idempotency_key` once per funnel attempt and
-persists them to `sessionStorage`, reusing the same pair across retries of *that*
-attempt — including a page refresh after a failed submit — so a resubmit can never
-create a duplicate lead.
+The frontend generates `event_id` and `idempotency_key` once per funnel session (held
+in memory, not persisted) and reuses the same pair across every retry within that
+session — e.g. clicking submit again after a failed attempt. They're deliberately
+**not** persisted to `sessionStorage`: an earlier version did, intending to survive a
+page refresh, but that backfired in practice — `consentTimestamp` is regenerated on
+every submit, so a stale persisted key from an earlier (even successful) submission
+collides with a new attempt's different body and trips the "reused with a different
+body" `409`. A refresh loses the funnel's answers regardless, so persisting only the
+ids never actually protected anything — it just caused false conflicts. A fresh page
+load correctly gets a fresh pair.
 
 ## Reliability
 
