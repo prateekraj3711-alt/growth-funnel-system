@@ -92,10 +92,11 @@ URLs, or Meta event names/payloads.
 - `/admin/health` diagnostics endpoint (pending/dead-letter jobs, last successful
   job, live worker heartbeat) and a CLI requeue script, beyond the required HTTP
   endpoint.
-- 52 automated tests across all five packages, including real component-level
+- 53 automated tests across all five packages, including real component-level
   integration tests of the funnel (render, click through, fill the form, assert the
   success screen and that the Pixel's `Lead` event carries the exact server-confirmed
-  `event_id`) rather than only unit tests.
+  `event_id`) rather than only unit tests — one of which is a regression test for the
+  idempotency bug below.
 - Failure simulation is hard-refused at boot if `NODE_ENV=production`, so it can
   never be accidentally left on in a real deployment.
 

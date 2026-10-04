@@ -326,11 +326,13 @@ npm run test --workspace packages/validation   # schema accept/reject edge cases
 npm run test --workspace packages/shared       # normalization (email/phone/E.164)
 ```
 
-52 tests, focused on business-critical paths per the brief ("do not chase arbitrary
-test coverage") rather than exhaustive coverage. The reliability properties that
-matter most — atomic job claiming, real backoff timing, dead-letter, and manual
-recovery — were additionally verified against a real local Postgres instance while
-building (see "Known limitations" for what that caught).
+53 tests, focused on business-critical paths per the brief ("do not chase arbitrary
+test coverage") rather than exhaustive coverage, including a regression test locking
+in the idempotency-scoping fix below (two independent funnel sessions must get
+different ids even with identical answers). The reliability properties that matter
+most — atomic job claiming, real backoff timing, dead-letter, and manual recovery —
+were additionally verified against a real local Postgres instance while building
+(see "Known limitations" for what that caught).
 
 ## Deployment
 
@@ -390,3 +392,8 @@ strings/origins change.
   correct under concurrent workers, but that was verified by code review of the
   `FOR UPDATE SKIP LOCKED` semantics, not by load-testing multiple concurrent worker
   instances.
+- **An earlier version falsely rejected legitimate resubmissions** with a 409 —
+  caught live, not in testing, after the real deployment was in use. See
+  "Idempotency" above for the root cause (persisting submission ids to
+  `sessionStorage`) and the fix (scope them to the component's in-memory lifetime
+  instead); now covered by a regression test.
